@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { PRODUCTS } from '@/lib/constants';
+import { getOrderByStripeSession, completeOrder } from '@/lib/db/orders';
+import { prisma } from '@/lib/db';
 
 function getStripeClient() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -77,6 +79,32 @@ export async function GET(request: NextRequest) {
     const formData = metadata?.formData ? JSON.parse(metadata.formData) : {};
     const customerEmail = session.customer_details?.email;
     const customerName = session.customer_details?.name || 'Customer';
+
+    // Ensure order is completed in database (backup to webhook)
+    try {
+      const existingOrder = await getOrderByStripeSession(sessionId);
+      if (existingOrder && existingOrder.status !== 'COMPLETED') {
+        await completeOrder(sessionId, {
+          email: customerEmail || undefined,
+          stripePaymentId: session.payment_intent as string,
+        });
+
+        // Link guest order to user if they have an account
+        if (customerEmail && !existingOrder.userId) {
+          const user = await prisma.user.findUnique({
+            where: { email: customerEmail },
+          });
+          if (user) {
+            await prisma.order.update({
+              where: { id: existingOrder.id },
+              data: { userId: user.id },
+            });
+          }
+        }
+      }
+    } catch (dbError) {
+      console.error('Failed to update order in database:', dbError);
+    }
 
     // Send order confirmation email (only once per session)
     if (customerEmail && !sentEmails.has(sessionId)) {

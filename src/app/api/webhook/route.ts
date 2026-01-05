@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { PRODUCTS } from '@/lib/constants';
+import { completeOrder, failOrder } from '@/lib/db/orders';
+import { prisma } from '@/lib/db';
 
 function getStripeClient() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -104,7 +106,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
   // Only process if payment is complete
   if (session.payment_status !== 'paid') {
-    console.log('Payment not yet complete, skipping email');
+    console.log('Payment not yet complete, skipping');
     return;
   }
 
@@ -112,6 +114,31 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   const productType = metadata?.productType || metadata?.trustType || 'discretionary';
   const customerEmail = session.customer_details?.email;
   const customerName = session.customer_details?.name || 'Customer';
+
+  // Complete the order in the database
+  try {
+    await completeOrder(session.id, {
+      email: customerEmail || undefined,
+      stripePaymentId: session.payment_intent as string,
+    });
+    console.log(`Order completed in database for session: ${session.id}`);
+
+    // If customer has an account with this email, link the order
+    if (customerEmail && !metadata?.userId) {
+      const user = await prisma.user.findUnique({
+        where: { email: customerEmail },
+      });
+      if (user) {
+        await prisma.order.updateMany({
+          where: { stripeSessionId: session.id, userId: null },
+          data: { userId: user.id },
+        });
+        console.log(`Linked guest order to user: ${user.id}`);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to update order in database:', error);
+  }
 
   if (!customerEmail) {
     console.log('No customer email found, skipping confirmation email');
@@ -132,7 +159,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     console.error('Failed to send order confirmation email:', error);
   }
 
-  // Log order for processing (in production, save to database)
+  // Log order for processing
   console.log('Order details:', {
     sessionId: session.id,
     productType,
@@ -145,7 +172,6 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   // For bundle products, this would trigger the registration process
   if (['discretionary-bundle', 'company-registration', 'smsf-bundle'].includes(productType)) {
     console.log(`Order requires manual processing: ${productType}`);
-    // In production: Create task in database, notify staff, etc.
   }
 }
 

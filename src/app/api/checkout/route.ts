@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { PRODUCTS } from '@/lib/constants';
+import { auth } from '@/lib/auth';
+import { createOrder, updateOrderWithStripeSession } from '@/lib/db/orders';
 
 function getStripeClient() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -58,6 +60,7 @@ function getCancelUrl(type: ProductType): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
     const body = await request.json();
     const { type, formData } = body;
 
@@ -79,10 +82,20 @@ export async function POST(request: NextRequest) {
 
     const priceInCents = product.price * 100;
 
+    // Create order in database
+    const order = await createOrder({
+      userId: session?.user?.id || null,
+      email: session?.user?.email || '',
+      productType: type,
+      productName: product.name,
+      amount: priceInCents,
+      formData: formData || {},
+    });
+
     const stripe = getStripeClient();
 
     // Create Stripe checkout session
-    const session = await stripe.checkout.sessions.create({
+    const stripeSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -100,13 +113,19 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}${getCancelUrl(type as ProductType)}`,
+      customer_email: session?.user?.email || undefined,
       metadata: {
         productType: type,
         formData: JSON.stringify(formData),
+        orderId: order.id,
+        userId: session?.user?.id || '',
       },
     });
 
-    return NextResponse.json({ sessionId: session.id, url: session.url });
+    // Update order with Stripe session ID
+    await updateOrderWithStripeSession(order.id, stripeSession.id);
+
+    return NextResponse.json({ sessionId: stripeSession.id, url: stripeSession.url });
   } catch (error) {
     console.error('Stripe checkout error:', error);
     return NextResponse.json(

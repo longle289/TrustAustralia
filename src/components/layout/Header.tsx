@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Menu, X, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UserMenu } from '@/components/auth';
 import { SITE_CONFIG, NAVIGATION } from '@/lib/constants';
 
 export function Header() {
@@ -41,6 +42,7 @@ export function Header() {
             <Button asChild>
               <Link href="/create/discretionary">Create Trust Deed</Link>
             </Button>
+            <UserMenu />
           </div>
 
           {/* Mobile Menu Button */}
@@ -77,6 +79,9 @@ export function Header() {
               <Button asChild className="mt-2">
                 <Link href="/create/discretionary">Create Trust Deed</Link>
               </Button>
+              <div className="mt-2">
+                <UserMenu />
+              </div>
             </div>
           </div>
         )}
