@@ -59,28 +59,16 @@ function SuccessContent() {
   }, [sessionId]);
 
   const handleDownload = async () => {
-    if (!orderDetails) return;
+    if (!orderDetails || !sessionId) return;
 
     setDownloading(true);
     try {
-      // Get form data from session storage
-      const formDataKey = `trustForm_${orderDetails.trustType}`;
-      const formDataString = sessionStorage.getItem(formDataKey);
-
-      if (!formDataString) {
-        throw new Error('Form data not found');
-      }
-
-      const formData = JSON.parse(formDataString);
-
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          type: orderDetails.trustType,
-          formData,
           sessionId,
         }),
       });

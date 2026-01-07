@@ -8,12 +8,33 @@ import {
   type DiscretionaryTrustForm,
   type UnitTrustForm,
 } from '@/lib/schemas/trust';
+import { getOrderByStripeSession } from '@/lib/db/orders';
 import React from 'react';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, formData, sessionId } = body;
+    const { sessionId } = body;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'Session ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get order from database
+    const order = await getOrderByStripeSession(sessionId);
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Order not found' },
+        { status: 404 }
+      );
+    }
+
+    const type = order.productType.toLowerCase();
+    const formData = order.formData;
 
     // Validate trust type
     if (type !== 'discretionary' && type !== 'unit') {
