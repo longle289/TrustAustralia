@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Environment variable templates (contains sensitive keys)
+VERCEL_ENV_VARIABLES.txt
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
