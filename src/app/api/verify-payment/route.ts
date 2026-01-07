@@ -75,15 +75,24 @@ export async function GET(request: NextRequest) {
 
     // Extract details from metadata
     const metadata = session.metadata;
-    const productType = metadata?.productType || metadata?.trustType || 'discretionary';
-    const formData = metadata?.formData ? JSON.parse(metadata.formData) : {};
     const customerEmail = session.customer_details?.email;
     const customerName = session.customer_details?.name || 'Customer';
 
+    // Get order from database to retrieve form data
+    const existingOrder = await getOrderByStripeSession(sessionId);
+    if (!existingOrder) {
+      return NextResponse.json(
+        { error: 'Order not found' },
+        { status: 404 }
+      );
+    }
+
+    const productType = existingOrder.productType;
+    const formData = existingOrder.formData as Record<string, unknown>;
+
     // Ensure order is completed in database (backup to webhook)
     try {
-      const existingOrder = await getOrderByStripeSession(sessionId);
-      if (existingOrder && existingOrder.status !== 'COMPLETED') {
+      if (existingOrder.status !== 'COMPLETED') {
         await completeOrder(sessionId, {
           email: customerEmail || undefined,
           stripePaymentId: session.payment_intent as string,

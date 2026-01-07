@@ -116,7 +116,6 @@ export async function POST(request: NextRequest) {
       customer_email: session?.user?.email || undefined,
       metadata: {
         productType: type,
-        formData: JSON.stringify(formData),
         orderId: order.id,
         userId: session?.user?.id || '',
       },
